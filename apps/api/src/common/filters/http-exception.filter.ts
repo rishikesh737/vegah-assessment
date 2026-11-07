@@ -41,13 +41,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof exceptionResponse === 'object') {
         const resp = exceptionResponse as Record<string, unknown>;
         message = (resp.message as string) || exception.message;
-        code = (resp.code as string) || this.getErrorCode(status);
+        code = (resp.code as any) || this.getErrorCode(status);
 
         // Handle validation errors
         if (Array.isArray(resp.message)) {
           details = this.formatValidationErrors(resp.message as string[]);
           message = 'Validation failed';
-          code = ERROR_CODES.VALIDATION_ERROR;
+          code = ERROR_CODES.VALIDATION_ERROR as any;
         }
       } else {
         message = exceptionResponse;

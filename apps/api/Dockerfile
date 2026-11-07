@@ -1,52 +1,56 @@
-# Build stage
+# ---- Builder Stage ----
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Install pnpm
+RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@8.12.0 --activate
 
-# Copy workspace files
-COPY pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
-# Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
-# Generate Prisma client
+RUN pnpm --filter @starter/shared build
 RUN pnpm --filter api db:generate
-
-# Build
 RUN pnpm --filter api build
 
-# Production stage
-FROM node:20-alpine AS runner
+# Keep the pnpm workspace layout, but remove development-only packages before
+# transferring dependencies to the runtime image.
+FROM builder AS production-deps
+RUN pnpm prune --prod
 
+# ---- Runner Stage ----
+FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nestjs
+RUN apk add --no-cache openssl
+ENV NODE_ENV=production
+ENV PORT=4000
+ENV NODE_PATH=/app/apps/api/node_modules:/app/node_modules
 
-# Copy built assets
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nestjs
+
+# Copy the compiled application and runtime files.
 COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/node_modules ./node_modules
-COPY --from=builder /app/apps/api/package.json ./
-
-# Copy Prisma files
-COPY --from=builder /app/apps/api/prisma ./prisma
+COPY --from=production-deps /app/node_modules ./node_modules
+COPY --from=production-deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+# Nest's Swagger compiler plugin emits metadata imports relative to the
+# original workspace path for enums used in decorated DTOs.
+COPY --from=builder /app/packages/shared/dist /packages/shared/dist
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 
 USER nestjs
 
 EXPOSE 4000
 
-ENV NODE_ENV=production
-ENV PORT=4000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:4000/api/v1/health/ping || exit 1
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main.js"]

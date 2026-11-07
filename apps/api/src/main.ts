@@ -15,6 +15,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 4000);
+  const host = configService.get<string>('HOST', '0.0.0.0');
   const apiPrefix = configService.get<string>('API_PREFIX', 'api');
   const corsOrigin = configService.get<string>('CORS_ORIGIN', 'http://localhost:3000');
 
@@ -82,13 +83,17 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(port);
+  await app.listen(port, host);
 
   console.log(`
-🚀 Application is running on: http://localhost:${port}/${apiPrefix}
+🚀 Application is running on: http://${host}:${port}/${apiPrefix}
 📚 Swagger docs: http://localhost:${port}/docs
 🌍 Environment: ${configService.get<string>('NODE_ENV', 'development')}
   `);
 }
 
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  console.error(`NestJS failed to start:\n${message}`);
+  process.exitCode = 1;
+});

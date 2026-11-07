@@ -20,7 +20,10 @@ COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 
 # Build
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED 1
+RUN pnpm --filter @starter/shared build
 RUN pnpm --filter web build
 
 # Production stage
