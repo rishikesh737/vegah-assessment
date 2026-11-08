@@ -82,12 +82,31 @@ jobs:
             --username "${{ secrets.ACR_USERNAME }}" \
             --password "${{ secrets.ACR_PASSWORD }}"
 
+      - name: Configure backend secrets and environment
+        shell: bash
+        run: |
+          az containerapp secret set \
+            --name "$BACKEND_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --secrets \
+              database-url="${{ secrets.DATABASE_URL }}" \
+              redis-url="${{ secrets.REDIS_URL }}" \
+              jwt-secret="${{ secrets.JWT_SECRET }}" \
+              jwt-refresh-secret="${{ secrets.JWT_REFRESH_SECRET }}"
+
       - name: Deploy backend Container App
         run: |
           az containerapp update \
             --name "$BACKEND_APP" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$ACR_LOGIN_SERVER/vegah-backend:${{ github.sha }}"
+            --image "$ACR_LOGIN_SERVER/vegah-backend:${{ github.sha }}" \
+            --set-env-vars \
+              NODE_ENV=production \
+              PORT=4000 \
+              DATABASE_URL=secretref:database-url \
+              REDIS_URL=secretref:redis-url \
+              JWT_SECRET=secretref:jwt-secret \
+              JWT_REFRESH_SECRET=secretref:jwt-refresh-secret
 
       - name: Deploy frontend Container App
         run: |
